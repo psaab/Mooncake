@@ -525,7 +525,7 @@ std::unique_ptr<RpcInterface> createRpcServer(uint64_t local_rank,
                                               uint64_t world_size) {
     auto server = std::make_unique<RpcInterface>();
     // Initialize server with default settings
-    server->initialize("0.0.0.0:8080", 0, 30, 10);
+    server->initialize("[::]:8080", 0, 30, 10);
     return server;
 }
 

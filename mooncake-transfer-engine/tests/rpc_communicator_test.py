@@ -124,7 +124,22 @@ def main():
     
     if args.mode == 'server':
         # Server mode, URL as bind address
-        bind_url = f"0.0.0.0:{args.url.split(':')[-1]}" if ':' in args.url else f"0.0.0.0:{args.url}"
+        # Extract port from URL: handles [ipv6]:port, host:port, or bare port
+        url = args.url
+        if url.startswith('['):
+            # IPv6 bracket notation: [host]:port
+            bracket_end = url.find(']')
+            if bracket_end != -1 and bracket_end + 1 < len(url) and url[bracket_end + 1] == ':':
+                port = url[bracket_end + 2:]
+            else:
+                port = url
+        elif url.count(':') == 1:
+            # Single colon: host:port
+            port = url.split(':')[1]
+        else:
+            # Bare port number or bare IPv6 (no port to extract)
+            port = url
+        bind_url = f"[::]:{port}"
         run_server(bind_url, args.data_size)
     else:
         # Client mode, URL as target address
