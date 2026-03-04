@@ -151,7 +151,7 @@ class MooncakeStoreService:
         ])
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', port)
+        site = web.TCPSite(runner, '::', port)
         await site.start()
         logging.info(f"REST API started on port {port}")
         return True

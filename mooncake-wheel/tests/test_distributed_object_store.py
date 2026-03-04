@@ -93,7 +93,7 @@ class TestDistributedObjectStoreSingleStore(unittest.TestCase):
         # No port is set in the config, so it should pick a random one between 12300 and 14300
         hostname = self.store.get_hostname()
         self.assertTrue(hostname.startswith("localhost:"))
-        port = int(hostname.split(":")[1])
+        port = int(hostname.rsplit(":", 1)[1])
         self.assertTrue(12300 <= port <= 14300)
 
 

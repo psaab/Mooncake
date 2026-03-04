@@ -112,7 +112,7 @@ bool MasterProcessHandler::start() {
         close(stderr_fd);
 
         // Execute the master
-        std::string rpc_address_arg = "--rpc-address=0.0.0.0";
+        std::string rpc_address_arg = "--rpc-address=::";
         std::string rpc_port_arg = "--rpc-port=" + std::to_string(port_);
         LOG(INFO) << "[m" << index_ << "] Execl master" << " "
                   << rpc_address_arg << " " << rpc_port_arg;
