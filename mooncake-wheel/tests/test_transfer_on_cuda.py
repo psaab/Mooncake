@@ -10,7 +10,18 @@ def get_ip() -> str:
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
     except Exception:
-        return socket.gethostbyname(socket.gethostname())
+        # Fallback: use getaddrinfo which supports both IPv4 and IPv6
+        infos = socket.getaddrinfo(
+            socket.gethostname(), None, socket.AF_UNSPEC, socket.SOCK_STREAM
+        )
+        for family, _, _, _, sockaddr in infos:
+            if family == socket.AF_INET:
+                return sockaddr[0]
+        # No IPv4 found, try IPv6
+        for family, _, _, _, sockaddr in infos:
+            if family == socket.AF_INET6:
+                return sockaddr[0]
+        raise RuntimeError("No IP address found")
 
 class TestTransferOnCuda(unittest.TestCase):
     @classmethod
