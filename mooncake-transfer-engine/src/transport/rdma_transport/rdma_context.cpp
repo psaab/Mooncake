@@ -399,14 +399,6 @@ int RdmaContext::compVector() {
     return (next_comp_vector_index_++) % context_->num_comp_vectors;
 }
 
-static inline int ipv6_addr_v4mapped(const struct in6_addr *a) {
-    return ((a->s6_addr32[0] | a->s6_addr32[1]) |
-            (a->s6_addr32[2] ^ htonl(0x0000ffff))) == 0UL ||
-           /* IPv4 encoded multicast addresses */
-           (a->s6_addr32[0] == htonl(0xff0e0000) &&
-            ((a->s6_addr32[1] | (a->s6_addr32[2] ^ htonl(0x0000ffff))) == 0UL));
-}
-
 // Reads the associated network device name for the given GID index from sysfs.
 static std::string readGidNdev(const std::string &device_name, uint8_t port,
                                int gid_index) {
@@ -452,8 +444,8 @@ GidNetworkState RdmaContext::findBestGidIndex(const std::string &device_name,
             continue;  // if gid is invalid ibv_query_gid_ex() will return !0
         }
 
-        if ((ipv6_addr_v4mapped((struct in6_addr *)gid_entry.gid.raw) &&
-             gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2) ||
+        // Accept RoCEv2 (both IPv4-mapped and native IPv6) or IB GIDs
+        if (gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2 ||
             gid_entry.gid_type == IBV_GID_TYPE_IB) {
             // Check if this GID has an associated network device
             if (hasNetworkDevice(device_name, port, i)) {
