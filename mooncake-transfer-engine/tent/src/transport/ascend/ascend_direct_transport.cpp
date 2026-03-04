@@ -25,6 +25,7 @@
 #include <glog/logging.h>
 
 #include "tent/common/status.h"
+#include "tent/common/utils/ip.h"
 #include "tent/runtime/slab.h"
 #include "tent/runtime/control_plane.h"
 
@@ -64,6 +65,33 @@ uint16_t findListenPort(int32_t dev_id) {
     int sockfd;
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
         int port = rand_dist(rand_gen);
+        // Try IPv6 dual-stack first, fall back to IPv4
+        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+        if (sockfd >= 0) {
+            int v6only = 0;
+            setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+            struct timeval timeout;
+            timeout.tv_sec = 1;
+            timeout.tv_usec = 0;
+            if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                           sizeof(timeout))) {
+                close(sockfd);
+                sockfd = -1;
+            } else {
+                sockaddr_in6 bind_address;
+                memset(&bind_address, 0, sizeof(bind_address));
+                bind_address.sin6_family = AF_INET6;
+                bind_address.sin6_port = htons(port);
+                bind_address.sin6_addr = in6addr_any;
+                if (bind(sockfd, (sockaddr *)&bind_address, sizeof(bind_address)) == 0) {
+                    close(sockfd);
+                    return port;
+                }
+                close(sockfd);
+                sockfd = -1;
+            }
+        }
+        // Fallback to IPv4
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd == -1) {
             continue;
@@ -170,13 +198,14 @@ Status AscendDirectTransport::initHixl(const std::shared_ptr<Config> &conf) {
         LOG(ERROR) << "Call aclrtGetCurrentContext failed, ret: " << ret;
         return Status::InternalError("Get rt context failed.");
     }
-    auto host_ip = local_segment_name_;
-    const size_t colon_pos = local_segment_name_.find(':');
-    if (colon_pos != std::string::npos) {
-        host_ip = local_segment_name_.substr(0, colon_pos);
-    }
+    auto [host_ip, parsed_port] = parseHostNameWithPort(local_segment_name_, 0);
     auto port = findListenPort(device_logic_id_);
-    auto hixl_name = host_ip + ":" + std::to_string(port);
+    // Use bracket notation for IPv6 addresses
+    struct in6_addr v6test;
+    bool is_ipv6 = (inet_pton(AF_INET6, host_ip.c_str(), &v6test) == 1);
+    auto hixl_name = is_ipv6
+        ? "[" + host_ip + "]:" + std::to_string(port)
+        : host_ip + ":" + std::to_string(port);
     local_hixl_name_ = hixl_name;
 
     auto segment = metadata_->segmentManager().getLocal();
