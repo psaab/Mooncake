@@ -149,7 +149,18 @@ class Proxy:
             if not instance or ":" not in instance:
                 raise HTTPException(status_code=400,
                                     detail="Invalid instance format.")
-            host, port_str = instance.split(":")
+            # Handle IPv6 [host]:port and IPv4 host:port
+            if instance.startswith("["):
+                bracket_end = instance.find("]")
+                if bracket_end == -1 or bracket_end + 1 >= len(instance) or instance[bracket_end + 1] != ":":
+                    raise HTTPException(status_code=400,
+                                        detail="Invalid instance address.")
+                host = instance[1:bracket_end]
+                port_str = instance[bracket_end + 2:]
+            else:
+                parts = instance.rsplit(":", 1)
+                host = parts[0]
+                port_str = parts[1] if len(parts) == 2 else ""
             try:
                 if host != "localhost":
                     ipaddress.ip_address(host)
@@ -371,13 +382,22 @@ class ProxyServer:
 
     def validate_instances(self, instances: list):
         for instance in instances:
-            if len(instance.split(":")) != 2:
-                raise ValueError(f"Invalid instance format: {instance}")
-            host, port = instance.split(":")
+            # Handle IPv6 [host]:port and IPv4 host:port
+            if instance.startswith("["):
+                bracket_end = instance.find("]")
+                if bracket_end == -1 or bracket_end + 1 >= len(instance) or instance[bracket_end + 1] != ":":
+                    raise ValueError(f"Invalid instance format: {instance}")
+                host = instance[1:bracket_end]
+                port_str = instance[bracket_end + 2:]
+            else:
+                parts = instance.rsplit(":", 1)
+                if len(parts) != 2:
+                    raise ValueError(f"Invalid instance format: {instance}")
+                host, port_str = parts
             try:
                 if host != "localhost":
                     ipaddress.ip_address(host)
-                port = int(port)
+                port = int(port_str)
                 if not (0 < port < 65536):
                     raise ValueError(
                         f"Invalid port number in instance: {instance}")
