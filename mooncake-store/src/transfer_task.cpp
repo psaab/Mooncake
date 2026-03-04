@@ -698,7 +698,7 @@ TransferStrategy TransferSubmitter::selectStrategy(
 
 namespace {
 // Helper function to extract IP address from endpoint string (ip:port format)
-// Supports both IPv4 (ip:port) and IPv6 ([ipv6]:port) formats
+// Supports both IPv4 (ip:port) and IPv6 ([ipv6]:port or bare ipv6) formats
 std::string extractIpAddress(const std::string& endpoint) {
     if (endpoint.empty()) {
         return "";
@@ -709,21 +709,24 @@ std::string extractIpAddress(const std::string& endpoint) {
         size_t closing_bracket = endpoint.find(']');
         if (closing_bracket == std::string::npos) {
             LOG(WARNING) << "Invalid IPv6 endpoint format: " << endpoint;
-            // Return empty to disable local memcpy optimization
             return "";
         }
-        return endpoint.substr(1, closing_bracket - 1);  // Extract IPv6 address
+        return endpoint.substr(1, closing_bracket - 1);
     }
 
-    // Handle IPv4 or hostname:port format
-    // Find the last colon (to handle IPv6 addresses without brackets)
-    size_t colon_pos = endpoint.rfind(':');
-    if (colon_pos != std::string::npos) {
-        return endpoint.substr(0, colon_pos);
+    // Count colons to distinguish IPv4/hostname:port from bare IPv6
+    size_t first_colon = endpoint.find(':');
+    if (first_colon == std::string::npos) {
+        // No colon — plain hostname or IP
+        return endpoint;
     }
-
-    // No colon found, return the whole string (might be just IP or hostname)
-    return endpoint;
+    size_t second_colon = endpoint.find(':', first_colon + 1);
+    if (second_colon != std::string::npos) {
+        // Multiple colons — bare IPv6 address (no port)
+        return endpoint;
+    }
+    // Exactly one colon — host:port
+    return endpoint.substr(0, first_colon);
 }
 }  // namespace
 
