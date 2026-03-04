@@ -89,16 +89,11 @@ class ChaosTest : public ::testing::Test {
         ASSERT_EQ(master_view_helper_->GetMasterView(master_address, version),
                   ErrorCode::OK);
 
-        // Validate master address format: should be ip:port
-        size_t colon_pos = master_address.find(':');
-        ASSERT_NE(colon_pos, std::string::npos)
-            << "Master address should contain port part separated by ':', got: "
-            << master_address;
-
-        // Extract port part and verify it's an integer
-        std::string port_str = master_address.substr(colon_pos + 1);
+        // Validate master address format: should be ip:port or [ipv6]:port
+        std::string host_part, port_str;
+        splitHostPort(master_address, host_part, port_str);
         ASSERT_FALSE(port_str.empty())
-            << "Port part should not be empty in master address: "
+            << "Master address should contain port part, got: "
             << master_address;
 
         // Verify port is a valid integer

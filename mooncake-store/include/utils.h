@@ -377,6 +377,75 @@ tl::expected<std::string, int> httpGet(const std::string& url);
 // Network utility: obtain an available TCP port on loopback by binding to 0
 int getFreeTcpPort();
 
+/**
+ * @brief Split a host:port string, handling IPv6 bracket notation.
+ *
+ * Accepts formats:
+ *   - "host:port"          (IPv4 / hostname)
+ *   - "[::1]:port"         (IPv6 with brackets)
+ *   - "::1"                (bare IPv6, no port)
+ *   - "host"               (no port)
+ *
+ * @param endpoint The endpoint string to split
+ * @param[out] host Receives the host/IP portion (without brackets)
+ * @param[out] port Receives the port string, or empty if no port
+ */
+inline void splitHostPort(const std::string& endpoint, std::string& host,
+                          std::string& port) {
+    port.clear();
+    if (endpoint.empty()) {
+        host.clear();
+        return;
+    }
+    // IPv6 bracket notation: [host]:port or [host]
+    if (endpoint.front() == '[') {
+        auto closing = endpoint.find(']');
+        if (closing != std::string::npos) {
+            host = endpoint.substr(1, closing - 1);
+            if (closing + 1 < endpoint.size() && endpoint[closing + 1] == ':') {
+                port = endpoint.substr(closing + 2);
+            }
+            return;
+        }
+    }
+    // Count colons to detect bare IPv6
+    auto first_colon = endpoint.find(':');
+    if (first_colon == std::string::npos) {
+        // No colon at all — plain hostname / IPv4
+        host = endpoint;
+        return;
+    }
+    auto second_colon = endpoint.find(':', first_colon + 1);
+    if (second_colon != std::string::npos) {
+        // Multiple colons — bare IPv6 address (no port)
+        host = endpoint;
+        return;
+    }
+    // Exactly one colon — host:port
+    host = endpoint.substr(0, first_colon);
+    port = endpoint.substr(first_colon + 1);
+}
+
+/**
+ * @brief Extract just the host/IP from a host:port string, handling IPv6.
+ */
+inline std::string extractHost(const std::string& endpoint) {
+    std::string host, port;
+    splitHostPort(endpoint, host, port);
+    return host;
+}
+
+/**
+ * @brief Build a host:port string, using [brackets] for IPv6 addresses.
+ */
+inline std::string buildHostPort(const std::string& host, int port) {
+    // If host contains ':', it's an IPv6 address and needs brackets
+    if (host.find(':') != std::string::npos) {
+        return "[" + host + "]:" + std::to_string(port);
+    }
+    return host + ":" + std::to_string(port);
+}
+
 int64_t time_gen();
 
 // Helper: Get integer from environment variable, fallback to default

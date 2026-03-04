@@ -29,7 +29,7 @@ using namespace mooncake;
 
 namespace mooncake {
 
-DEFINE_string(metadata_server, "127.0.0.1:2379",
+DEFINE_string(metadata_server, "[::1]:2379",
               "central metadata server for transfer engine");
 
 class RDMALoopbackTest : public ::testing::Test {

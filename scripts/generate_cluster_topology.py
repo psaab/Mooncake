@@ -13,7 +13,7 @@ from scipy.optimize import linear_sum_assignment
 
 
 def is_local_host(host):
-    return host in ("localhost", "127.0.0.1", socket.gethostname())
+    return host in ("localhost", "127.0.0.1", "::1", "[::1]", socket.gethostname())
 
 def local_exec(command):
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

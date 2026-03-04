@@ -271,27 +271,40 @@ int HcclTransport::initPdThread() {
 }
 
 // Get HostIp\Port\DevicePhyId
+// Supports both IPv4 "host:port:npu_N" and IPv6 "[host]:port:npu_N"
 int HcclTransport::getDevIdAndIpPortFromServerName(std::string &identifier,
                                                    std::string &hostIp,
                                                    int &port, int &npuId) {
-    size_t firstColon = identifier.find(":");
-    if (firstColon == std::string::npos) {
-        LOG(ERROR) << "HcclTransport: getDevIdAndIpPortFromServerName failed, "
-                      "identifier is empty";
-        return -1;
+    size_t portStart;
+    // Handle IPv6 bracket notation: [host]:port:npu_N
+    if (!identifier.empty() && identifier.front() == '[') {
+        size_t closingBracket = identifier.find(']');
+        if (closingBracket == std::string::npos || closingBracket + 1 >= identifier.size() || identifier[closingBracket + 1] != ':') {
+            LOG(ERROR) << "HcclTransport: invalid IPv6 bracket notation in identifier: " << identifier;
+            return -1;
+        }
+        hostIp = identifier.substr(1, closingBracket - 1);
+        portStart = closingBracket + 2;
+    } else {
+        size_t firstColon = identifier.find(":");
+        if (firstColon == std::string::npos) {
+            LOG(ERROR) << "HcclTransport: getDevIdAndIpPortFromServerName failed, "
+                          "identifier is empty";
+            return -1;
+        }
+        hostIp = identifier.substr(0, firstColon);
+        portStart = firstColon + 1;
     }
 
-    size_t secondColon = identifier.find(":", firstColon + 1);
+    size_t secondColon = identifier.find(":", portStart);
     if (secondColon == std::string::npos) {
         LOG(ERROR) << "HcclTransport: getDevIdAndIpPortFromServerName failed, "
-                      "second colon missing";
+                      "npu field missing";
         return -1;
     }
 
-    hostIp = identifier.substr(0, firstColon);
-
     std::string portStr =
-        identifier.substr(firstColon + 1, secondColon - firstColon - 1);
+        identifier.substr(portStart, secondColon - portStart);
     try {
         port = std::stoi(portStr);
     } catch (const std::exception &e) {
@@ -413,7 +426,11 @@ int HcclTransport::install(std::string &local_server_name,
         return ret;
     }
 
-    local_server_name_ = hostIp + ":" + std::to_string(port);
+    // Use bracket notation for IPv6 addresses
+    if (hostIp.find(':') != std::string::npos)
+        local_server_name_ = "[" + hostIp + "]:" + std::to_string(port);
+    else
+        local_server_name_ = hostIp + ":" + std::to_string(port);
     LOG(INFO)
         << "HcclTransport: begin to install transport, local devicePhyId: "
         << devicePhyId << ", local_server_name: " << local_server_name;

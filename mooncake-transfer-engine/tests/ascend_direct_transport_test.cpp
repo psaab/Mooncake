@@ -344,7 +344,7 @@ class AscendDirectTransportTest : public ::testing::Test {
 
     std::unique_ptr<AscendDirectTransport> createTransport() {
         auto transport = std::make_unique<AscendDirectTransport>();
-        std::string local_server_name = "127.0.0.1:20000";
+        std::string local_server_name = "[::1]:20000";
         auto metadata = std::make_shared<TransferMetadata>("P2PHANDSHAKE");
         auto topology = std::make_shared<Topology>();
 
@@ -390,7 +390,7 @@ TEST_F(AscendDirectTransportTest, InstallFailsWhenAdxlInitializeFails) {
     adxl_mock::set_initialize_result(adxl::FAILED);
 
     auto transport = std::make_unique<AscendDirectTransport>();
-    std::string local_server_name = "127.0.0.1:20000";
+    std::string local_server_name = "[::1]:20000";
     auto metadata = std::make_shared<TransferMetadata>("P2PHANDSHAKE");
     auto topology = std::make_shared<Topology>();
 

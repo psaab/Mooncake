@@ -191,7 +191,19 @@ static int initServerNetSocket(RankInfo *local_rank_info) {
 // used to convey control information such as deviceId and deviceIp
 static int initControlSocket(RankInfo *local_rank_info) {
     int ret = 0;
-    g_server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+    bool use_ipv6 = false;
+
+    // Try IPv6 dual-stack first
+    g_server_socket_ = socket(AF_INET6, SOCK_STREAM, 0);
+    if (g_server_socket_ >= 0) {
+        use_ipv6 = true;
+        int v6only = 0;
+        setsockopt(g_server_socket_, IPPROTO_IPV6, IPV6_V6ONLY, &v6only,
+                   sizeof(v6only));
+    } else {
+        // Fallback to IPv4
+        g_server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+    }
     if (g_server_socket_ < 0) {
         LOG(ERROR) << "ascend transport out-of-band socket create failed";
         return g_server_socket_;
@@ -206,18 +218,29 @@ static int initControlSocket(RankInfo *local_rank_info) {
         return ret;
     }
 
-    struct sockaddr_in bind_address;
-    memset(&bind_address, 0, sizeof(sockaddr_in));
-    bind_address.sin_family = AF_INET;
-    bind_address.sin_addr.s_addr = INADDR_ANY;
-    bind_address.sin_port = htons(local_rank_info->hostPort);
+    if (use_ipv6) {
+        struct sockaddr_in6 bind_address;
+        memset(&bind_address, 0, sizeof(bind_address));
+        bind_address.sin6_family = AF_INET6;
+        bind_address.sin6_addr = in6addr_any;
+        bind_address.sin6_port = htons(local_rank_info->hostPort);
 
-    ret = bind(g_server_socket_, (struct sockaddr *)&bind_address,
-               sizeof(bind_address));
+        ret = bind(g_server_socket_, (struct sockaddr *)&bind_address,
+                   sizeof(bind_address));
+    } else {
+        struct sockaddr_in bind_address;
+        memset(&bind_address, 0, sizeof(sockaddr_in));
+        bind_address.sin_family = AF_INET;
+        bind_address.sin_addr.s_addr = INADDR_ANY;
+        bind_address.sin_port = htons(local_rank_info->hostPort);
+
+        ret = bind(g_server_socket_, (struct sockaddr *)&bind_address,
+                   sizeof(bind_address));
+    }
     if (ret < 0) {
         LOG(INFO) << "bind failed on the default port, default port: "
                   << local_rank_info->hostPort << ", will find available port";
-        uint16_t port = findAvailableTcpPort(g_server_socket_, false);
+        uint16_t port = findAvailableTcpPort(g_server_socket_, use_ipv6);
         if (port == 0) {
             LOG(ERROR) << "findAvailableTcpPort failed";
             close(g_server_socket_);
@@ -330,11 +353,25 @@ void freeTransportMem() {
 
 static int connectToTarget(std::string target_ip, int target_port) {
     int client_socket;
-    struct sockaddr_in server_addr;
+    struct addrinfo hints, *result = nullptr;
 
-    client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    std::string port_str = std::to_string(target_port);
+    int gai_ret = getaddrinfo(target_ip.c_str(), port_str.c_str(), &hints, &result);
+    if (gai_ret != 0 || result == nullptr) {
+        LOG(ERROR) << "getaddrinfo failed for " << target_ip << ": "
+                   << gai_strerror(gai_ret);
+        return -1;
+    }
+
+    client_socket = socket(result->ai_family, result->ai_socktype,
+                           result->ai_protocol);
     if (client_socket < 0) {
         LOG(ERROR) << "Socket creation failed";
+        freeaddrinfo(result);
         return client_socket;
     }
 
@@ -344,18 +381,8 @@ static int connectToTarget(std::string target_ip, int target_port) {
     if (ret < 0) {
         LOG(ERROR) << "set sock opt failed, ret: " << ret;
         close(client_socket);
+        freeaddrinfo(result);
         return ret;
-    }
-
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(target_port);
-    server_addr.sin_addr.s_addr = inet_addr(target_ip.c_str());
-
-    if (server_addr.sin_addr.s_addr == INADDR_NONE) {
-        LOG(ERROR) << "Invalid server IP address";
-        close(client_socket);
-        return -1;
     }
 
     int connected = 0;
@@ -365,10 +392,10 @@ static int connectToTarget(std::string target_ip, int target_port) {
     int connect_retry_times = ascend_tcp_timeout * 100;
 
     for (int i = 0; i < connect_retry_times; ++i) {
-        if (connect(client_socket, (struct sockaddr *)&server_addr,
-                    sizeof(server_addr)) == 0) {
+        if (connect(client_socket, result->ai_addr,
+                    result->ai_addrlen) == 0) {
             LOG(INFO) << "Connect to host server " << target_ip << ":"
-                      << ntohs(server_addr.sin_port) << " successful";
+                      << target_port << " successful";
             connected = 1;
             break;
         }
@@ -378,6 +405,8 @@ static int connectToTarget(std::string target_ip, int target_port) {
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    freeaddrinfo(result);
 
     if (!connected) {
         LOG(ERROR) << "Failed to connect to server after "
@@ -842,7 +871,7 @@ int transportMemTask(RankInfo *local_rank_info, RankInfo *remote_rank_info,
 
 static int acceptFromTarget() {
     int client_socket;
-    struct sockaddr_in client_addr;
+    struct sockaddr_storage client_addr;
     socklen_t client_len = sizeof(client_addr);
     client_socket =
         accept(g_server_socket_, (struct sockaddr *)&client_addr, &client_len);
@@ -851,9 +880,18 @@ static int acceptFromTarget() {
         return client_socket;
     }
 
-    LOG(INFO) << "host client connected from "
-              << inet_ntoa(client_addr.sin_addr) << ":"
-              << ntohs(client_addr.sin_port);
+    char addr_str[INET6_ADDRSTRLEN] = {};
+    uint16_t port = 0;
+    if (client_addr.ss_family == AF_INET) {
+        auto *addr4 = (struct sockaddr_in *)&client_addr;
+        inet_ntop(AF_INET, &addr4->sin_addr, addr_str, sizeof(addr_str));
+        port = ntohs(addr4->sin_port);
+    } else if (client_addr.ss_family == AF_INET6) {
+        auto *addr6 = (struct sockaddr_in6 *)&client_addr;
+        inet_ntop(AF_INET6, &addr6->sin6_addr, addr_str, sizeof(addr_str));
+        port = ntohs(addr6->sin6_port);
+    }
+    LOG(INFO) << "host client connected from " << addr_str << ":" << port;
     return client_socket;
 }
 
