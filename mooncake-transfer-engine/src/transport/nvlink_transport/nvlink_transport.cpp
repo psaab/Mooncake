@@ -495,7 +495,17 @@ int NvlinkTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
         index++;
     }
     LOG(ERROR) << "Requested address " << (void *)dest_addr << " to "
-               << (void *)(dest_addr + length) << " not found!";
+               << (void *)(dest_addr + length) << " (length=" << length
+               << ") not found in segment " << target_id
+               << " (" << desc->buffers.size() << " registered buffers):";
+    for (size_t i = 0; i < desc->buffers.size(); i++) {
+        auto &buf = desc->buffers[i];
+        LOG(ERROR) << "  buffer[" << i << "]: addr=" << (void *)buf.addr
+                   << " to " << (void *)(buf.addr + buf.length)
+                   << " length=" << buf.length
+                   << " name=" << buf.name
+                   << (buf.shm_name.empty() ? " (no shm)" : " (has shm)");
+    }
     return ERR_INVALID_ARGUMENT;
 }
 
