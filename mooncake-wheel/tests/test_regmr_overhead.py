@@ -193,7 +193,21 @@ def test_transfer_engine_reg_mr_overhead():
         # Get local hostname for initialization
         import socket
         hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
+        # Use getaddrinfo instead of gethostbyname for IPv4/IPv6 support
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        local_ip = None
+        for family, _, _, _, sockaddr in infos:
+            if family == socket.AF_INET:
+                local_ip = sockaddr[0]
+                break
+        if local_ip is None:
+            for family, _, _, _, sockaddr in infos:
+                if family == socket.AF_INET6:
+                    local_ip = sockaddr[0]
+                    break
+        if local_ip is None:
+            print("Skipped: Could not resolve local IP address")
+            return
         local_server_name = f"{local_ip}:0"  # Port 0 means auto-assign
         
         # Initialize with P2PHANDSHAKE mode (no external metadata server needed)

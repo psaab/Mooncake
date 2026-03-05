@@ -40,7 +40,7 @@ std::string getLocalIpAddress() {
     }
 
     // Fallback: get local IP using system calls
-    // Get the first non-loopback IPv4 address
+    // Get the first non-loopback address (prefer IPv4, fall back to IPv6)
     struct ifaddrs *ifaddr, *ifa;
     std::string ip = "127.0.0.1";  // Default fallback
 
@@ -48,30 +48,54 @@ std::string getLocalIpAddress() {
         return ip;
     }
 
+    // First pass: look for IPv4
     for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == nullptr) {
             continue;
         }
 
-        // Look for IPv4 address
         if (ifa->ifa_addr->sa_family == AF_INET) {
-            // Skip loopback interface
             if (strcmp(ifa->ifa_name, "lo") == 0) {
                 continue;
             }
 
-            // Check if interface is UP
             if (!(ifa->ifa_flags & IFF_UP)) {
                 continue;
             }
 
-            struct sockaddr_in* sin = (struct sockaddr_in*)ifa->ifa_addr;
             char host[NI_MAXHOST];
-            if (getnameinfo((struct sockaddr*)sin, sizeof(struct sockaddr_in),
+            if (getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
                             host, NI_MAXHOST, nullptr, 0,
                             NI_NUMERICHOST) == 0) {
                 ip = std::string(host);
-                break;  // Use the first non-loopback interface
+                freeifaddrs(ifaddr);
+                return ip;
+            }
+        }
+    }
+
+    // Second pass: look for IPv6
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) {
+            continue;
+        }
+
+        if (ifa->ifa_addr->sa_family == AF_INET6) {
+            if (strcmp(ifa->ifa_name, "lo") == 0) {
+                continue;
+            }
+
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                continue;
+            }
+
+            char host[NI_MAXHOST];
+            if (getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in6),
+                            host, NI_MAXHOST, nullptr, 0,
+                            NI_NUMERICHOST) == 0) {
+                ip = std::string(host);
+                freeifaddrs(ifaddr);
+                return ip;
             }
         }
     }
