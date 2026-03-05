@@ -663,6 +663,11 @@ uint16_t AscendDirectTransport::findAdxlListenPort() {
     return 0;
 }
 
+std::string AscendDirectTransport::GenAdxlEngineName(const std::string &ip,
+                                                     const uint64_t port) {
+    return buildHostPort(ip, port);
+}
+
 void AscendDirectTransport::queryThread() {
 #ifdef EXIST_ADXL_ASYNC_METHOD
     LOG(INFO) << "AscendDirectTransport query thread started";
