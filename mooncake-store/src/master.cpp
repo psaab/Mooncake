@@ -48,7 +48,7 @@ DEFINE_int32(rpc_thread_num, 0,
 DEFINE_int32(
     rpc_port, 0,
     "Port for RPC server to listen on (0 = use port, preferred over port)");
-DEFINE_string(rpc_address, "0.0.0.0",
+DEFINE_string(rpc_address, "::",
               "Address for RPC server to bind to, required in HA mode");
 DEFINE_int32(rpc_conn_timeout_seconds, 0,
              "Connection timeout in seconds (0 = no timeout)");
@@ -89,7 +89,7 @@ DEFINE_bool(enable_http_metadata_server, false,
             "Enable HTTP metadata server instead of etcd");
 DEFINE_int32(http_metadata_server_port, 8080,
              "Port for HTTP metadata server to listen on");
-DEFINE_string(http_metadata_server_host, "0.0.0.0",
+DEFINE_string(http_metadata_server_host, "::",
               "Host for HTTP metadata server to bind to");
 
 DEFINE_uint64(put_start_discard_timeout_sec,

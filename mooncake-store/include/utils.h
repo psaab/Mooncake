@@ -453,17 +453,6 @@ inline std::string extractHost(const std::string& endpoint) {
     return host;
 }
 
-/**
- * @brief Build a host:port string, using [brackets] for IPv6 addresses.
- */
-inline std::string buildHostPort(const std::string& host, int port) {
-    // If host contains ':', it's an IPv6 address and needs brackets
-    if (host.find(':') != std::string::npos) {
-        return "[" + host + "]:" + std::to_string(port);
-    }
-    return host + ":" + std::to_string(port);
-}
-
 int64_t time_gen();
 
 // Helper: Get integer from environment variable, fallback to default

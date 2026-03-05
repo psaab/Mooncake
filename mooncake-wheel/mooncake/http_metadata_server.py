@@ -31,12 +31,12 @@ class KVPoll(Enum):
 class KVBootstrapServer:
     """HTTP server for storing and retrieving metadata."""
     
-    def __init__(self, port: int, host: str = "0.0.0.0"):
+    def __init__(self, port: int, host: str = "::"):
         """Initialize the server.
         
         Args:
             port: Port to listen on
-            host: Host to bind to (default: 0.0.0.0)
+            host: Host to bind to (default: :: for dual-stack)
         """
         self.port = port
         self.host = host
@@ -159,7 +159,7 @@ def parse_args():
     parser.add_argument(
         "--host", 
         type=str, 
-        default="0.0.0.0", 
+        default="::",
         help="Host to bind to"
     )
     parser.add_argument(
