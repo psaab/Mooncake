@@ -125,24 +125,31 @@ static inline bool isOverlayNetwork(const std::string& ndev) {
            ndev.find("docker") == 0 || ndev == "tunl0";
 }
 
-// Check if an IPv4 address is in overlay network range
-static inline bool isOverlayIPv4(const struct in6_addr* addr) {
-    if (!ipv6_addr_v4mapped(addr)) return false;
+// Check if a GID address is in an overlay network range.
+// Handles both IPv4-mapped and native IPv6 addresses.
+static inline bool isOverlayAddress(const struct in6_addr* addr) {
+    if (ipv6_addr_v4mapped(addr)) {
+        // Extract IPv4 address from IPv6-mapped format
+        uint32_t ipv4 = ntohl(addr->s6_addr32[3]);
+        uint8_t octet1 = (ipv4 >> 24) & 0xFF;
+        uint8_t octet2 = (ipv4 >> 16) & 0xFF;
 
-    // Extract IPv4 address from IPv6-mapped format
-    uint32_t ipv4 = ntohl(addr->s6_addr32[3]);
-    uint8_t octet1 = (ipv4 >> 24) & 0xFF;
-    uint8_t octet2 = (ipv4 >> 16) & 0xFF;
+        // Common overlay network ranges:
+        // 10.0.0.0/8 (flannel, etc.)
+        // 172.16.0.0/12 (Docker default)
+        // 100.64.0.0/10 (Calico default)
+        if (octet1 == 10) return true;
+        if (octet1 == 172 && octet2 >= 16 && octet2 <= 31) return true;
+        if (octet1 == 100 && octet2 >= 64 && octet2 <= 127) return true;
+        return false;
+    }
 
-    // Common overlay network ranges:
-    // 10.0.0.0/8 (flannel, etc.)
-    // 172.16.0.0/12 (Docker default)
-    // 100.64.0.0/10 (Calico default)
-    if (octet1 == 10) return true;  // 10.0.0.0/8
-    if (octet1 == 172 && octet2 >= 16 && octet2 <= 31)
-        return true;  // 172.16.0.0/12
-    if (octet1 == 100 && octet2 >= 64 && octet2 <= 127)
-        return true;  // 100.64.0.0/10
+    // Native IPv6 overlay ranges:
+    // fd00::/8  — ULA (Unique Local Address), used by Calico, Flannel IPv6
+    // fe80::/10 — Link-local, often used by container overlay networks
+    if (addr->s6_addr[0] == 0xfd) return true;
+    if ((addr->s6_addr[0] == 0xfe) && ((addr->s6_addr[1] & 0xc0) == 0x80))
+        return true;
 
     return false;
 }
@@ -214,15 +221,16 @@ static inline GidNetworkState getBestGidIndex(const std::string& device_name,
         bool is_roce_v2 = gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2;
         bool is_ib = gid_entry.gid_type == IBV_GID_TYPE_IB;
 
-        if (!((is_ipv4_mapped && is_roce_v2) || is_ib)) {
+        // Accept IPv4-mapped RoCEv2, native IPv6 RoCEv2, or IB GIDs
+        if (!(is_roce_v2 || is_ib)) {
             continue;  // Skip non-RoCEv2/IB GIDs
         }
 
         std::string ndev = readGidNdev(device_name, port, i);
         bool has_ndev = !ndev.empty();
         bool is_overlay_dev = isOverlayNetwork(ndev);
-        bool is_overlay_ip = is_ipv4_mapped &&
-                             isOverlayIPv4((struct in6_addr*)gid_entry.gid.raw);
+        bool is_overlay_ip =
+            isOverlayAddress((struct in6_addr*)gid_entry.gid.raw);
         bool is_overlay = has_ndev && (is_overlay_dev || is_overlay_ip);
 
         VLOG(1) << "GID[" << i << "]: " << gidBytesToString(gid_entry.gid.raw)
@@ -643,17 +651,14 @@ int RdmaContext::openDevice(const std::string& device_name, uint8_t port) {
 
         if (ibv_query_gid_ex(context.get(), port, gid_index_, &user_gid_entry,
                              0) == 0) {
-            bool is_ipv4 =
-                ipv6_addr_v4mapped((struct in6_addr*)user_gid_entry.gid.raw);
             bool is_roce_v2 = user_gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2;
             bool is_ib = user_gid_entry.gid_type == IBV_GID_TYPE_IB;
-            if (!((is_ipv4 && is_roce_v2) || is_ib)) {
+            if (!(is_roce_v2 || is_ib)) {
                 issues += std::string("non-optimal type (") +
                           gidTypeToString(user_gid_entry.gid_type) + "); ";
                 has_issues = true;
             }
-            if (is_ipv4 &&
-                isOverlayIPv4((struct in6_addr*)user_gid_entry.gid.raw)) {
+            if (isOverlayAddress((struct in6_addr*)user_gid_entry.gid.raw)) {
                 issues += "overlay IP range; ";
                 has_issues = true;
             }
