@@ -2368,7 +2368,8 @@ void Client::PingThreadMain(bool is_ha_mode,
 
         ping_fail_count++;
         if (ping_fail_count < max_ping_fail_count) {
-            LOG(ERROR) << "Failed to ping master";
+            LOG(ERROR) << "Failed to ping master at "
+                       << current_master_address;
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(fail_ping_interval_ms));
             continue;
