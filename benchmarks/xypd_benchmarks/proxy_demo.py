@@ -32,6 +32,32 @@ logger = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 
 
+def parse_host_port(address: str) -> tuple[str, int]:
+    """Parse a host:port string, supporting IPv6 [host]:port notation.
+
+    Returns (host, port) where host has no brackets.
+    Raises ValueError on invalid format.
+    """
+    if address.startswith("["):
+        bracket_end = address.find("]")
+        if bracket_end == -1 or bracket_end + 1 >= len(address) or address[bracket_end + 1] != ":":
+            raise ValueError(f"Invalid address format: {address}")
+        host = address[1:bracket_end]
+        port_str = address[bracket_end + 2:]
+    else:
+        parts = address.rsplit(":", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid address format: {address}")
+        host, port_str = parts
+
+    if host != "localhost":
+        ipaddress.ip_address(host)
+    port = int(port_str)
+    if not (0 < port < 65536):
+        raise ValueError(f"Invalid port number: {port}")
+    return host, port
+
+
 class SchedulingPolicy(ABC):
 
     @abstractmethod
@@ -146,31 +172,11 @@ class Proxy:
             if instance_type not in ["prefill", "decode"]:
                 raise HTTPException(status_code=400,
                                     detail="Invalid instance type.")
-            if not instance or ":" not in instance:
-                raise HTTPException(status_code=400,
-                                    detail="Invalid instance format.")
-            # Handle IPv6 [host]:port and IPv4 host:port
-            if instance.startswith("["):
-                bracket_end = instance.find("]")
-                if bracket_end == -1 or bracket_end + 1 >= len(instance) or instance[bracket_end + 1] != ":":
-                    raise HTTPException(status_code=400,
-                                        detail="Invalid instance address.")
-                host = instance[1:bracket_end]
-                port_str = instance[bracket_end + 2:]
-            else:
-                parts = instance.rsplit(":", 1)
-                host = parts[0]
-                port_str = parts[1] if len(parts) == 2 else ""
             try:
-                if host != "localhost":
-                    ipaddress.ip_address(host)
-                port = int(port_str)
-                if not (0 < port < 65536):
-                    raise HTTPException(status_code=400,
-                                        detail="Invalid port number.")
-            except Exception as e:
+                parse_host_port(instance)
+            except (ValueError, TypeError) as e:
                 raise HTTPException(status_code=400,
-                                    detail="Invalid instance address.") from e
+                                    detail=f"Invalid instance address: {e}") from e
 
             is_valid = await self.validate_instance(instance)
             if not is_valid:
@@ -382,28 +388,11 @@ class ProxyServer:
 
     def validate_instances(self, instances: list):
         for instance in instances:
-            # Handle IPv6 [host]:port and IPv4 host:port
-            if instance.startswith("["):
-                bracket_end = instance.find("]")
-                if bracket_end == -1 or bracket_end + 1 >= len(instance) or instance[bracket_end + 1] != ":":
-                    raise ValueError(f"Invalid instance format: {instance}")
-                host = instance[1:bracket_end]
-                port_str = instance[bracket_end + 2:]
-            else:
-                parts = instance.rsplit(":", 1)
-                if len(parts) != 2:
-                    raise ValueError(f"Invalid instance format: {instance}")
-                host, port_str = parts
             try:
-                if host != "localhost":
-                    ipaddress.ip_address(host)
-                port = int(port_str)
-                if not (0 < port < 65536):
-                    raise ValueError(
-                        f"Invalid port number in instance: {instance}")
-            except Exception as e:
+                parse_host_port(instance)
+            except (ValueError, TypeError) as e:
                 raise ValueError(
-                    f"Invalid instance {instance}: {str(e)}") from e
+                    f"Invalid instance {instance}: {e}") from e
 
     def verify_model_config(self, instances: list, model: str) -> None:
         model_suffix = model.split("/")[-1]
