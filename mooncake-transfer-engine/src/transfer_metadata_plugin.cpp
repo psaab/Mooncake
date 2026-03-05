@@ -836,7 +836,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }
@@ -871,7 +871,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }
@@ -979,7 +979,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }

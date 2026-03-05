@@ -688,7 +688,7 @@ std::shared_ptr<asio::ip::tcp::socket> TcpTransport::getConnection(
         } catch (std::exception& e) {
             LOG(ERROR)
                 << "TcpTransport::getConnection failed to create connection to "
-                << host << ":" << port << ". Error: " << e.what();
+                << buildHostPort(host, port) << ". Error: " << e.what();
             return nullptr;
         }
     }
@@ -739,7 +739,7 @@ std::shared_ptr<asio::ip::tcp::socket> TcpTransport::getConnection(
     } catch (std::exception& e) {
         LOG(ERROR)
             << "TcpTransport::getConnection failed to create connection to "
-            << host << ":" << port << ". Error: " << e.what();
+            << buildHostPort(host, port) << ". Error: " << e.what();
         return nullptr;
     }
 
@@ -865,7 +865,8 @@ void TcpTransport::startTransfer(Slice* slice) {
         getConnection(meta_entry.ip_or_host_name, desc->tcp_data_port);
     if (!socket) {
         LOG(ERROR) << "TcpTransport::startTransfer failed to get connection to "
-                   << meta_entry.ip_or_host_name << ":" << desc->tcp_data_port;
+                   << buildHostPort(meta_entry.ip_or_host_name,
+                                    desc->tcp_data_port);
         slice->markFailed();
         return;
     }
