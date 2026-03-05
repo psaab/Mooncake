@@ -25,7 +25,7 @@ namespace tent {
  */
 struct MetricsConfig {
     bool enabled = true;
-    std::string http_host = "0.0.0.0";
+    std::string http_host = "::";
     uint16_t http_port = 9100;
     uint16_t http_server_threads = 2;       // HTTP server thread count
     uint32_t report_interval_seconds = 30;  // 0 means disabled

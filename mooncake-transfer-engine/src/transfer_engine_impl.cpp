@@ -99,7 +99,7 @@ int TransferEngineImpl::init(const std::string& metadata_conn_string,
     LOG(INFO) << "Transfer Engine parseHostNameWithPortAscend. server_name: "
               << host_name << " port: " << port
               << " devicePhyId: " << devicePhyId;
-    local_server_name_ = host_name + ":" + std::to_string(port);
+    local_server_name_ = buildHostPort(host_name, port);
 #else
     auto [host_name, port] = parseHostNameWithPort(local_server_name);
     LOG(INFO) << "Transfer Engine parseHostNameWithPort. server_name: "
@@ -139,8 +139,8 @@ int TransferEngineImpl::init(const std::string& metadata_conn_string,
             local_server_name_ =
                 desc.ip_or_host_name + ":" + std::to_string(desc.rpc_port);
 #else
-            local_server_name_ = maybeWrapIpV6(desc.ip_or_host_name) + ":" +
-                                 std::to_string(desc.rpc_port);
+            local_server_name_ = buildHostPort(desc.ip_or_host_name,
+                                               desc.rpc_port);
 #endif
         }
     } else {
@@ -170,8 +170,8 @@ int TransferEngineImpl::init(const std::string& metadata_conn_string,
     }
 
     LOG(INFO) << "Transfer Engine RPC using " << rpc_binding_method
-              << ", listening on " << desc.ip_or_host_name << ":"
-              << desc.rpc_port
+              << ", listening on "
+              << buildHostPort(desc.ip_or_host_name, desc.rpc_port)
 #ifdef USE_BAREX
               << (use_barex_
                       ? ", barex use port:" + std::to_string(desc.barex_port)
@@ -364,8 +364,8 @@ int TransferEngineImpl::getRpcPort() {
 }
 
 std::string TransferEngineImpl::getLocalIpAndPort() {
-    return metadata_->localRpcMeta().ip_or_host_name + ":" +
-           std::to_string(metadata_->localRpcMeta().rpc_port);
+    return buildHostPort(metadata_->localRpcMeta().ip_or_host_name,
+                         metadata_->localRpcMeta().rpc_port);
 }
 
 int TransferEngineImpl::getNotifies(

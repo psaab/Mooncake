@@ -595,7 +595,7 @@ static inline const std::string getNetworkAddress(struct sockaddr *addr) {
         char ip[INET6_ADDRSTRLEN];
         if (inet_ntop(addr->sa_family, &(sock_addr->sin6_addr), ip,
                       INET6_ADDRSTRLEN) != NULL)
-            return std::string(ip) + ":" +
+            return std::string("[") + ip + "]:" +
                    std::to_string(ntohs(sock_addr->sin6_port));
     }
     PLOG(ERROR) << "Failed to parse socket address";
@@ -647,8 +647,15 @@ struct SocketHandShakePlugin : public HandShakePlugin {
         if (sockfd >= 0) {
             listen_fd_ = sockfd;
         } else {
-            listen_fd_ = socket(globalConfig().use_ipv6 ? AF_INET6 : AF_INET,
-                                SOCK_STREAM, 0);
+            // Try IPv6 dual-stack first, fall back to IPv4-only
+            listen_fd_ = socket(AF_INET6, SOCK_STREAM, 0);
+            if (listen_fd_ >= 0) {
+                int v6only = 0;
+                setsockopt(listen_fd_, IPPROTO_IPV6, IPV6_V6ONLY,
+                           &v6only, sizeof(v6only));
+            } else {
+                listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+            }
             if (listen_fd_ < 0) {
                 PLOG(ERROR) << "SocketHandShakePlugin: socket()";
                 return ERR_SOCKET;
@@ -672,29 +679,32 @@ struct SocketHandShakePlugin : public HandShakePlugin {
                 return ERR_SOCKET;
             }
 
-            if (globalConfig().use_ipv6) {
-                sockaddr_in6 bind_address;
-                memset(&bind_address, 0, sizeof(sockaddr_in6));
+            // Detect socket family and bind accordingly
+            int sock_domain;
+            socklen_t optlen = sizeof(sock_domain);
+            getsockopt(listen_fd_, SOL_SOCKET, SO_DOMAIN, &sock_domain,
+                       &optlen);
+            if (sock_domain == AF_INET6) {
+                sockaddr_in6 bind_address = {};
                 bind_address.sin6_family = AF_INET6;
                 bind_address.sin6_port = htons(listen_port);
-                bind_address.sin6_addr = IN6ADDR_ANY_INIT;
+                bind_address.sin6_addr = in6addr_any;
 
                 if (bind(listen_fd_, (sockaddr *)&bind_address,
-                         sizeof(sockaddr_in6)) < 0) {
+                         sizeof(bind_address)) < 0) {
                     PLOG(ERROR) << "SocketHandShakePlugin: bind (port "
                                 << listen_port << ")";
                     closeListen();
                     return ERR_SOCKET;
                 }
             } else {
-                sockaddr_in bind_address;
-                memset(&bind_address, 0, sizeof(sockaddr_in));
+                sockaddr_in bind_address = {};
                 bind_address.sin_family = AF_INET;
                 bind_address.sin_port = htons(listen_port);
                 bind_address.sin_addr.s_addr = INADDR_ANY;
 
                 if (bind(listen_fd_, (sockaddr *)&bind_address,
-                         sizeof(sockaddr_in)) < 0) {
+                         sizeof(bind_address)) < 0) {
                     PLOG(ERROR) << "SocketHandShakePlugin: bind (port "
                                 << listen_port << ")";
                     closeListen();
@@ -712,8 +722,8 @@ struct SocketHandShakePlugin : public HandShakePlugin {
         listener_running_ = true;
         listener_ = std::thread([this]() {
             while (listener_running_) {
-                sockaddr_in addr;
-                socklen_t addr_len = sizeof(sockaddr_in);
+                sockaddr_storage addr;
+                socklen_t addr_len = sizeof(sockaddr_storage);
                 int conn_fd = accept(listen_fd_, (sockaddr *)&addr, &addr_len);
                 if (conn_fd < 0) {
                     if (errno != EWOULDBLOCK && errno != EINTR)
@@ -721,7 +731,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
                     continue;
                 }
 
-                if (addr.sin_family != AF_INET && addr.sin_family != AF_INET6) {
+                if (addr.ss_family != AF_INET && addr.ss_family != AF_INET6) {
                     LOG(ERROR) << "SocketHandShakePlugin: unsupported socket "
                                   "type, should be AF_INET or AF_INET6";
                     close(conn_fd);
@@ -817,7 +827,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
         struct addrinfo hints;
         struct addrinfo *result, *rp;
         memset(&hints, 0, sizeof(hints));
-        hints.ai_family = globalConfig().use_ipv6 ? AF_INET6 : AF_INET;
+        hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
 
         char service[16];
@@ -826,7 +836,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }
@@ -852,7 +862,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
         struct addrinfo hints;
         struct addrinfo *result, *rp;
         memset(&hints, 0, sizeof(hints));
-        hints.ai_family = globalConfig().use_ipv6 ? AF_INET6 : AF_INET;
+        hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
 
         char service[16];
@@ -861,7 +871,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }
@@ -960,7 +970,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
         struct addrinfo hints;
         struct addrinfo *result, *rp;
         memset(&hints, 0, sizeof(hints));
-        hints.ai_family = globalConfig().use_ipv6 ? AF_INET6 : AF_INET;
+        hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
 
         char service[16];
@@ -969,7 +979,7 @@ struct SocketHandShakePlugin : public HandShakePlugin {
             PLOG(ERROR)
                 << "SocketHandShakePlugin: failed to get IP address of peer "
                    "server "
-                << ip_or_host_name << ":" << rpc_port
+                << buildHostPort(ip_or_host_name, rpc_port)
                 << ", check DNS and /etc/hosts, or use IPv4 address instead";
             return ERR_DNS;
         }
@@ -1161,11 +1171,19 @@ uint16_t findAvailableTcpPort(int &sockfd, bool set_range) {
     }
 #endif
     const int max_attempts = 500;
-    bool use_ipv6 = globalConfig().use_ipv6;
 
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
         int port = min_port + rand_dist(rand_gen) % (max_port - min_port + 1);
-        sockfd = socket(use_ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
+        // Try IPv6 dual-stack first, fall back to IPv4-only
+        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+        bool is_ipv6_sock = (sockfd >= 0);
+        if (is_ipv6_sock) {
+            int v6only = 0;
+            setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY,
+                       &v6only, sizeof(v6only));
+        } else {
+            sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        }
         if (sockfd == -1) {
             continue;
         }
@@ -1180,26 +1198,24 @@ uint16_t findAvailableTcpPort(int &sockfd, bool set_range) {
             continue;
         }
 
-        if (use_ipv6) {
-            sockaddr_in6 bind_address;
-            memset(&bind_address, 0, sizeof(sockaddr_in6));
+        if (is_ipv6_sock) {
+            sockaddr_in6 bind_address = {};
             bind_address.sin6_family = AF_INET6;
             bind_address.sin6_port = htons(port);
-            bind_address.sin6_addr = IN6ADDR_ANY_INIT;
-            if (bind(sockfd, (sockaddr *)&bind_address, sizeof(sockaddr_in6)) <
-                0) {
+            bind_address.sin6_addr = in6addr_any;
+            if (bind(sockfd, (sockaddr *)&bind_address,
+                     sizeof(bind_address)) < 0) {
                 close(sockfd);
                 sockfd = -1;
                 continue;
             }
         } else {
-            sockaddr_in bind_address;
-            memset(&bind_address, 0, sizeof(sockaddr_in));
+            sockaddr_in bind_address = {};
             bind_address.sin_family = AF_INET;
             bind_address.sin_port = htons(port);
             bind_address.sin_addr.s_addr = INADDR_ANY;
-            if (bind(sockfd, (sockaddr *)&bind_address, sizeof(sockaddr_in)) <
-                0) {
+            if (bind(sockfd, (sockaddr *)&bind_address,
+                     sizeof(bind_address)) < 0) {
                 close(sockfd);
                 sockfd = -1;
                 continue;
