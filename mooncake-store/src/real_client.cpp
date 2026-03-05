@@ -20,6 +20,7 @@
 #include "mutex.h"
 #include "types.h"
 #include "utils.h"
+#include "common.h"
 #include "rpc_types.h"
 #include "file_storage.h"
 #include "default_config.h"
