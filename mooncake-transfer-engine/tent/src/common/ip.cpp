@@ -112,7 +112,7 @@ std::pair<std::string, uint16_t> parseHostNameWithPort(const std::string &url,
         } else {
             port = static_cast<uint16_t>(val);
         }
-        return std::make_pair(port_str, port);
+        return std::make_pair(ip, port);
     }
 
     // Check if url has port field

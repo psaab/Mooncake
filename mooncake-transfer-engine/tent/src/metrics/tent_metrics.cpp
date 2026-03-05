@@ -106,7 +106,7 @@ void TentMetrics::initHttpServer() {
 
     // Create HTTP server with configurable threads
     http_server_ = std::make_unique<coro_http_server>(
-        config_.http_server_threads, config_.http_port);
+        config_.http_server_threads, config_.http_port, config_.http_host);
 
     // Register /metrics endpoint for Prometheus
     http_server_->set_http_handler<GET>(
