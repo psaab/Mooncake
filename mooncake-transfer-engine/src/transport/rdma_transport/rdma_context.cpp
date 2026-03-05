@@ -399,14 +399,6 @@ int RdmaContext::compVector() {
     return (next_comp_vector_index_++) % context_->num_comp_vectors;
 }
 
-static inline int ipv6_addr_v4mapped(const struct in6_addr *a) {
-    return ((a->s6_addr32[0] | a->s6_addr32[1]) |
-            (a->s6_addr32[2] ^ htonl(0x0000ffff))) == 0UL ||
-           /* IPv4 encoded multicast addresses */
-           (a->s6_addr32[0] == htonl(0xff0e0000) &&
-            ((a->s6_addr32[1] | (a->s6_addr32[2] ^ htonl(0x0000ffff))) == 0UL));
-}
-
 // Reads the associated network device name for the given GID index from sysfs.
 static std::string readGidNdev(const std::string &device_name, uint8_t port,
                                int gid_index) {
@@ -453,18 +445,12 @@ GidNetworkState RdmaContext::findBestGidIndex(const std::string &device_name,
             break;
         }
 
-        if (gid_entry.gid_type != IBV_GID_TYPE_ROCE_V2 &&
-            gid_entry.gid_type != IBV_GID_TYPE_IB) {
-            continue;
-        }
-
-        const bool is_ipv4_gid =
-            gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2 &&
-            ipv6_addr_v4mapped((struct in6_addr *)gid_entry.gid.raw);
-        const bool has_network_device = hasNetworkDevice(device_name, port, i);
-
-        if (is_ipv4_gid) {
-            if (has_network_device) {
+        // Accept RoCEv2 (both IPv4-mapped and native IPv6) or IB GIDs
+        if (gid_entry.gid_type == IBV_GID_TYPE_ROCE_V2 ||
+            gid_entry.gid_type == IBV_GID_TYPE_IB) {
+            // Check if this GID has an associated network device
+            if (hasNetworkDevice(device_name, port, i)) {
+                // Found a GID with network device, this is the best choice
                 gid_index = i;
                 return GidNetworkState::GID_WITH_NETWORK;
             }
@@ -473,15 +459,6 @@ GidNetworkState RdmaContext::findBestGidIndex(const std::string &device_name,
                 fallback_ipv4_gid_without_network = i;
                 state = GidNetworkState::GID_WITHOUT_NETWORK;
             }
-            continue;
-        }
-
-        if (has_network_device && fallback_ipv6_gid_with_network < 0) {
-            fallback_ipv6_gid_with_network = i;
-        }
-
-        if (!has_network_device && fallback_ipv6_gid_without_network < 0) {
-            fallback_ipv6_gid_without_network = i;
         }
     }
 
