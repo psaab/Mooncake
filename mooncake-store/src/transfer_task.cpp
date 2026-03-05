@@ -696,6 +696,40 @@ TransferStrategy TransferSubmitter::selectStrategy(
     return TransferStrategy::TRANSFER_ENGINE;
 }
 
+namespace {
+// Helper function to extract IP address from endpoint string (ip:port format)
+// Supports both IPv4 (ip:port) and IPv6 ([ipv6]:port or bare ipv6) formats
+std::string extractIpAddress(const std::string& endpoint) {
+    if (endpoint.empty()) {
+        return "";
+    }
+
+    // Handle IPv6 format: [ipv6]:port
+    if (endpoint[0] == '[') {
+        size_t closing_bracket = endpoint.find(']');
+        if (closing_bracket == std::string::npos) {
+            LOG(WARNING) << "Invalid IPv6 endpoint format: " << endpoint;
+            return "";
+        }
+        return endpoint.substr(1, closing_bracket - 1);
+    }
+
+    // Count colons to distinguish IPv4/hostname:port from bare IPv6
+    size_t first_colon = endpoint.find(':');
+    if (first_colon == std::string::npos) {
+        // No colon — plain hostname or IP
+        return endpoint;
+    }
+    size_t second_colon = endpoint.find(':', first_colon + 1);
+    if (second_colon != std::string::npos) {
+        // Multiple colons — bare IPv6 address (no port)
+        return endpoint;
+    }
+    // Exactly one colon — host:port
+    return endpoint.substr(0, first_colon);
+}
+}  // namespace
+
 bool TransferSubmitter::isLocalTransfer(
     const AllocatedBuffer::Descriptor& handle) const {
     std::string local_ep = engine_.getLocalIpAndPort();

@@ -24,7 +24,28 @@
 namespace mooncake {
 
 bool isPortAvailable(int port) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    // Try IPv6 dual-stack first (covers both IPv4 and IPv6 on Linux)
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (sock >= 0) {
+        int opt = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        int v6only = 0;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+
+        struct sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin6_family = AF_INET6;
+        addr.sin6_addr = in6addr_any;
+        addr.sin6_port = htons(port);
+
+        bool available =
+            (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+        close(sock);
+        return available;
+    }
+
+    // Fallback to IPv4 if IPv6 socket creation fails
+    sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return false;
 
     int opt = 1;
@@ -51,6 +72,27 @@ AutoPortBinder::AutoPortBinder(int min_port, int max_port)
     for (int attempt = 0; attempt < 20; ++attempt) {
         int port = rand_dist(gen);
 
+        // Try IPv6 dual-stack first
+        socket_fd_ = socket(AF_INET6, SOCK_STREAM, 0);
+        if (socket_fd_ >= 0) {
+            int v6only = 0;
+            setsockopt(socket_fd_, IPPROTO_IPV6, IPV6_V6ONLY, &v6only,
+                       sizeof(v6only));
+
+            sockaddr_in6 addr = {};
+            addr.sin6_family = AF_INET6;
+            addr.sin6_addr = in6addr_any;
+            addr.sin6_port = htons(port);
+
+            if (bind(socket_fd_, (sockaddr *)&addr, sizeof(addr)) == 0) {
+                port_ = port;
+                break;
+            }
+            close(socket_fd_);
+            socket_fd_ = -1;
+        }
+
+        // Fallback to IPv4
         socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd_ < 0) continue;
 
@@ -271,22 +313,46 @@ tl::expected<std::string, int> httpGet(const std::string &url) {
 }
 
 int getFreeTcpPort() {
-    int sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    // Try IPv6 first
+    int sock = ::socket(AF_INET6, SOCK_STREAM, 0);
+    if (sock >= 0) {
+        int v6only = 0;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+        sockaddr_in6 addr{};
+        addr.sin6_family = AF_INET6;
+        addr.sin6_addr = in6addr_loopback;
+        addr.sin6_port = htons(0);
+        if (::bind(sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) ==
+            0) {
+            socklen_t len = sizeof(addr);
+            if (::getsockname(sock, reinterpret_cast<sockaddr *>(&addr),
+                              &len) == 0) {
+                int port = ntohs(addr.sin6_port);
+                ::close(sock);
+                return port;
+            }
+        }
+        ::close(sock);
+    }
+
+    // Fallback to IPv4
+    sock = ::socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return -1;
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(0);
-    if (::bind(sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+    sockaddr_in addr4{};
+    addr4.sin_family = AF_INET;
+    addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr4.sin_port = htons(0);
+    if (::bind(sock, reinterpret_cast<sockaddr *>(&addr4), sizeof(addr4)) !=
+        0) {
         ::close(sock);
         return -1;
     }
-    socklen_t len = sizeof(addr);
-    if (::getsockname(sock, reinterpret_cast<sockaddr *>(&addr), &len) != 0) {
+    socklen_t len = sizeof(addr4);
+    if (::getsockname(sock, reinterpret_cast<sockaddr *>(&addr4), &len) != 0) {
         ::close(sock);
         return -1;
     }
-    int port = ntohs(addr.sin_port);
+    int port = ntohs(addr4.sin_port);
     ::close(sock);
     return port;
 }

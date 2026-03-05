@@ -20,6 +20,7 @@
 #include "mutex.h"
 #include "types.h"
 #include "utils.h"
+#include "common.h"
 #include "rpc_types.h"
 #include "file_storage.h"
 #include "default_config.h"
@@ -177,16 +178,21 @@ tl::expected<void, ErrorCode> RealClient::setup_internal(
         (rdma_devices.empty() ? std::nullopt
                               : std::make_optional(rdma_devices));
 
-    // Check if hostname already contains a port
-    std::string hostname = local_hostname;
-    size_t colon_pos = hostname.find(":");
-    bool user_specified_port = (colon_pos != std::string::npos);
+    // Validate required parameters
+    if (local_hostname.empty()) {
+        LOG(ERROR) << "local_hostname is empty";
+        return tl::unexpected(ErrorCode::INVALID_PARAMS);
+    }
+
+    // Check if hostname already contains a port (handles IPv6 bracket notation)
+    std::string host_part, port_part;
+    splitHostPort(local_hostname, host_part, port_part);
+    bool user_specified_port = !port_part.empty();
 
     if (user_specified_port) {
         // User specified port, no retry needed
         this->local_hostname = local_hostname;
-        this->local_rpc_addr =
-            hostname.substr(0, colon_pos + 1) + std::to_string(local_rpc_port);
+        this->local_rpc_addr = buildHostPort(host_part, local_rpc_port);
         auto client_opt = mooncake::Client::Create(
             this->local_hostname, metadata_server, protocol, device_name,
             master_server_addr, transfer_engine);
@@ -213,9 +219,8 @@ tl::expected<void, ErrorCode> RealClient::setup_internal(
                 continue;
             }
 
-            this->local_hostname = hostname + ":" + std::to_string(port);
-            this->local_rpc_addr =
-                hostname + ":" + std::to_string(local_rpc_port);
+            this->local_hostname = buildHostPort(host_part, port);
+            this->local_rpc_addr = buildHostPort(host_part, local_rpc_port);
             auto client_opt = mooncake::Client::Create(
                 this->local_hostname, metadata_server, protocol, device_name,
                 master_server_addr, transfer_engine);

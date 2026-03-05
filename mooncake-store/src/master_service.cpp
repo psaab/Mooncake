@@ -10,6 +10,7 @@
 #include "master_metric_manager.h"
 #include "segment.h"
 #include "types.h"
+#include "utils.h"
 
 namespace mooncake {
 
@@ -355,13 +356,7 @@ auto MasterService::QueryIp(const UUID& client_id)
     unique_ips.reserve(segments.size());
     for (const auto& segment : segments) {
         if (!segment.te_endpoint.empty()) {
-            size_t colon_pos = segment.te_endpoint.find(':');
-            if (colon_pos != std::string::npos) {
-                std::string ip = segment.te_endpoint.substr(0, colon_pos);
-                unique_ips.emplace(ip);
-            } else {
-                unique_ips.emplace(segment.te_endpoint);
-            }
+            unique_ips.emplace(extractHost(segment.te_endpoint));
         }
     }
 
