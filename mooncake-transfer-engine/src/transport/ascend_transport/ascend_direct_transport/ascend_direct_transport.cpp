@@ -668,10 +668,7 @@ uint16_t AscendDirectTransport::findAdxlListenPort() {
 
 std::string AscendDirectTransport::GenAdxlEngineName(const std::string &ip,
                                                      const uint64_t port) {
-    if (globalConfig().use_ipv6) {
-        return ("[" + ip + "]") + ":" + std::to_string(port);
-    }
-    return ip + ":" + std::to_string(port);
+    return buildHostPort(ip, port);
 }
 
 void AscendDirectTransport::queryThread() {
