@@ -179,6 +179,12 @@ static inline std::string maybeWrapIpV6(const std::string &address) {
     return address;
 }
 
+// Build an "ip:port" string, wrapping IPv6 addresses in brackets.
+// e.g. ("::1", 8080) -> "[::1]:8080", ("1.2.3.4", 80) -> "1.2.3.4:80"
+static inline std::string buildHostPort(const std::string &host, int port) {
+    return maybeWrapIpV6(host) + ":" + std::to_string(port);
+}
+
 // Helper struct to hold IPv6 parsing result
 struct IPv6ParseResult {
     bool matched;           // Whether the input was recognized as IPv6
