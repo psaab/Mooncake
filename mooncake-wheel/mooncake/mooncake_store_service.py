@@ -106,6 +106,16 @@ class MooncakeStoreService:
                 )
 
                 self.store = MooncakeDistributedStore()
+                logging.info(
+                    f"Mooncake store setup: "
+                    f"local_hostname={self.config.local_hostname}, "
+                    f"metadata_server={self.config.metadata_server}, "
+                    f"global_segment_size={self.config.global_segment_size}, "
+                    f"local_buffer_size={self.config.local_buffer_size}, "
+                    f"protocol={self.config.protocol}, "
+                    f"device_name={self.config.device_name}, "
+                    f"master_server_address={self.config.master_server_address}"
+                )
                 ret = self.store.setup(
                     self.config.local_hostname,
                     self.config.metadata_server,
@@ -117,7 +127,9 @@ class MooncakeStoreService:
                 )
 
                 if ret != 0:
-                    raise RuntimeError("Store initialization failed")
+                    raise RuntimeError(
+                        f"Store initialization failed with error code: {ret}"
+                    )
 
                 logging.info(f"Store service started successfully on {self.config.local_hostname}")
                 return True
