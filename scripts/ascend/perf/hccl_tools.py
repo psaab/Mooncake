@@ -65,7 +65,17 @@ def get_host_ip():
 
     try:
         hostname = socket.gethostname()
-        ip = socket.gethostbyname(hostname)
+        # Use getaddrinfo instead of gethostbyname for IPv4/IPv6 support
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for family, _, _, _, sockaddr in infos:
+            if family == socket.AF_INET:
+                ip = sockaddr[0]
+                break
+        else:
+            for family, _, _, _, sockaddr in infos:
+                if family == socket.AF_INET6:
+                    ip = sockaddr[0]
+                    break
     except EOFError:
         pass
 

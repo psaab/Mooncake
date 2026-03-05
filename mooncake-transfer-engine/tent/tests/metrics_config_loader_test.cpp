@@ -60,7 +60,7 @@ TEST(MetricsConfigLoaderTest, GetDefaultConfigReturnsExpectedDefaults) {
     MetricsConfig config = MetricsConfigLoader::getDefaultConfig();
 
     EXPECT_TRUE(config.enabled);
-    EXPECT_EQ(config.http_host, "0.0.0.0");
+    EXPECT_EQ(config.http_host, "::");
     EXPECT_EQ(config.http_port, 9100);
     EXPECT_EQ(config.http_server_threads, 2);
     EXPECT_EQ(config.report_interval_seconds, 30);
@@ -117,7 +117,7 @@ TEST(MetricsConfigLoaderTest, LoadFromConfigWithPartialValues) {
     // Only http_port should be overridden, others should be defaults
     EXPECT_TRUE(metrics_config.enabled);
     EXPECT_EQ(metrics_config.http_port, 9200);
-    EXPECT_EQ(metrics_config.http_host, "0.0.0.0");
+    EXPECT_EQ(metrics_config.http_host, "::");
     EXPECT_EQ(metrics_config.http_server_threads, 2);
 }
 
@@ -167,7 +167,7 @@ TEST(MetricsConfigLoaderTest, LoadFromEnvironmentWithPartialVars) {
     EXPECT_EQ(config.http_port, 8888);
     // Other values should be defaults
     EXPECT_TRUE(config.enabled);
-    EXPECT_EQ(config.http_host, "0.0.0.0");
+    EXPECT_EQ(config.http_host, "::");
 }
 
 TEST(MetricsConfigLoaderTest, LoadFromEnvironmentWithLatencyBuckets) {

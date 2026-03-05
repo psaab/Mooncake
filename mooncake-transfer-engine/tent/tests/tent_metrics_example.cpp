@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
     auto config = MetricsConfigLoader::loadWithDefaults();
     config.enabled = !start_disabled;  // Can be disabled via --disabled flag
     config.http_port = port;
-    config.http_host = "0.0.0.0";
+    config.http_host = "::";
     config.report_interval_seconds =
         0;  // Disable periodic logging for this example
 

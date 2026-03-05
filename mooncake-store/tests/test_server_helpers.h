@@ -51,7 +51,7 @@ class InProcMaster {
 
             // RPC server + master service
             server_ = std::make_unique<coro_rpc::coro_rpc_server>(
-                /*thread_num=*/4, /*port=*/rpc_port_, /*address=*/"0.0.0.0",
+                /*thread_num=*/4, /*port=*/rpc_port_, /*address=*/"::",
                 std::chrono::seconds(0), /*tcp_no_delay=*/true);
             const char* value = std::getenv("MC_RPC_PROTOCOL");
             if (value && std::string_view(value) == "rdma") {
