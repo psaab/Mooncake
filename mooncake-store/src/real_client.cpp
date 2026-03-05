@@ -198,7 +198,12 @@ tl::expected<void, ErrorCode> RealClient::setup_internal(
             this->local_hostname, metadata_server, protocol, device_name,
             master_server_addr, transfer_engine);
         if (!client_opt) {
-            LOG(ERROR) << "Failed to create client";
+            LOG(ERROR) << "Failed to create client"
+                       << ", local_hostname=" << this->local_hostname
+                       << ", metadata_server=" << metadata_server
+                       << ", protocol=" << protocol
+                       << ", device_name=" << device_name
+                       << ", master_server_addr=" << master_server_addr;
             return tl::unexpected(ErrorCode::INVALID_PARAMS);
         }
         client_ = *client_opt;
@@ -243,7 +248,12 @@ tl::expected<void, ErrorCode> RealClient::setup_internal(
 
         if (!success) {
             LOG(ERROR) << "Failed to create client after " << kMaxRetries
-                       << " retries";
+                       << " retries"
+                       << ", local_hostname=" << this->local_hostname
+                       << ", metadata_server=" << metadata_server
+                       << ", protocol=" << protocol
+                       << ", device_name=" << device_name
+                       << ", master_server_addr=" << master_server_addr;
             return tl::unexpected(ErrorCode::INTERNAL_ERROR);
         }
     }
