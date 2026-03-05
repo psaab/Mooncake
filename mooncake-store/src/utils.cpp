@@ -168,28 +168,33 @@ void *allocate_buffer_allocator_memory(size_t total_size,
         LOG(ERROR) << "Total size must be at least " << alignment;
         return nullptr;
     }
+#ifdef ASCEND_SUPPORT_FABRIC_MEM
+    if ((protocol == "ascend" || protocol == "ubshmem") && total_size > 0 &&
+        globalConfig().ascend_use_fabric_mem) {
+        aclrtDrvMemHandle handle = nullptr;
+        if (allocate_physical_memory(total_size, handle) != 0) {
+            return nullptr;
+        }
+        void *va;
+        auto ret = aclrtReserveMemAddress(&va, total_size, 0, nullptr, 1);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to reserve memory: " << ret;
+            (void)aclrtFreePhysical(handle);
+            return nullptr;
+        }
+        ret = aclrtMapMem(va, total_size, 0, handle, 0);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to map memory: " << ret;
+            (void)aclrtReleaseMemAddress(va);
+            (void)aclrtFreePhysical(handle);
+            return nullptr;
+        }
+        return va;
+    }
+#endif
+
 #ifdef USE_ASCEND_DIRECT
     if (protocol == "ascend" && total_size > 0) {
-#ifdef ASCEND_SUPPORT_FABRIC_MEM
-        if (globalConfig().ascend_use_fabric_mem) {
-            aclrtDrvMemHandle handle = nullptr;
-            if (allocate_physical_memory(total_size, handle) != 0) {
-                return nullptr;
-            }
-            void *va;
-            auto ret = aclrtReserveMemAddress(&va, total_size, 0, nullptr, 1);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to reserve memory: " << ret;
-                return nullptr;
-            }
-            ret = aclrtMapMem(va, total_size, 0, handle, 0);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to map memory: " << ret;
-                return nullptr;
-            }
-            return va;
-        }
-#endif
         void *buffer = nullptr;
         auto ret = aclrtMallocHost(&buffer, total_size);
         if (ret != ACL_ERROR_NONE) {
@@ -197,33 +202,6 @@ void *allocate_buffer_allocator_memory(size_t total_size,
             return nullptr;
         }
         return buffer;
-    }
-#endif
-
-#ifdef USE_UBSHMEM
-    if (protocol == "ubshmem" && total_size > 0) {
-#ifdef ASCEND_SUPPORT_FABRIC_MEM
-        if (globalConfig().ascend_use_fabric_mem) {
-            aclrtDrvMemHandle handle = nullptr;
-            if (allocate_physical_memory(total_size, handle) != 0) {
-                return nullptr;
-            }
-            void *va;
-            auto ret = aclrtReserveMemAddress(&va, total_size, 0, nullptr, 1);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to reserve memory: " << ret;
-                return nullptr;
-            }
-            ret = aclrtMapMem(va, total_size, 0, handle, 0);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to map memory: " << ret;
-                return nullptr;
-            }
-            return va;
-        }
-#endif
-        LOG(ERROR) << "Ascend runtime not support fabirc mem ";
-        return nullptr;
     }
 #endif
 
@@ -265,62 +243,37 @@ void free_buffer_mmap_memory(void *ptr, size_t total_size) {
 }
 
 void free_memory(const std::string &protocol, void *ptr) {
-#ifdef USE_ASCEND_DIRECT
-    if (protocol == "ascend") {
 #ifdef ASCEND_SUPPORT_FABRIC_MEM
-        if (globalConfig().ascend_use_fabric_mem) {
-            aclrtDrvMemHandle handle;
-            auto ret = aclrtMemRetainAllocationHandle(ptr, &handle);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to retain allocation handle: " << ptr;
-                return;
-            }
-            ret = aclrtUnmapMem(ptr);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to unmap memory: " << ptr;
-            }
-            aclrtReleaseMemAddress(ptr);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to release mem address: " << ptr;
-            }
-            ret = aclrtFreePhysical(handle);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to free physical handle: " << handle;
-            }
+    if ((protocol == "ascend" || protocol == "ubshmem") &&
+        globalConfig().ascend_use_fabric_mem) {
+        aclrtDrvMemHandle handle;
+        auto ret = aclrtMemRetainAllocationHandle(ptr, &handle);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to retain allocation handle: " << ptr;
             return;
         }
-#endif
-        aclrtFreeHost(ptr);
+        ret = aclrtUnmapMem(ptr);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to unmap memory: " << ptr;
+            return;
+        }
+        ret = aclrtReleaseMemAddress(ptr);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to release mem address: " << ptr;
+            return;
+        }
+        ret = aclrtFreePhysical(handle);
+        if (ret != ACL_ERROR_NONE) {
+            LOG(ERROR) << "Failed to free physical handle: " << handle;
+            return;
+        }
         return;
     }
 #endif
 
-#ifdef USE_UBSHMEM
-    if (protocol == "ubshmem") {
-#ifdef ASCEND_SUPPORT_FABRIC_MEM
-        if (globalConfig().ascend_use_fabric_mem) {
-            aclrtDrvMemHandle handle;
-            auto ret = aclrtMemRetainAllocationHandle(ptr, &handle);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to retain allocation handle: " << ptr;
-                return;
-            }
-            ret = aclrtUnmapMem(ptr);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to unmap memory: " << ptr;
-            }
-            ret = aclrtReleaseMemAddress(ptr);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to release mem address: " << ptr;
-            }
-            ret = aclrtFreePhysical(handle);
-            if (ret != ACL_ERROR_NONE) {
-                LOG(ERROR) << "Failed to free physical handle: " << handle;
-            }
-            return;
-        }
-#endif
-        LOG(ERROR) << "Ascend runtime not support fabirc mem ";
+#ifdef USE_ASCEND_DIRECT
+    if (protocol == "ascend") {
+        aclrtFreeHost(ptr);
         return;
     }
 #endif
@@ -428,4 +381,40 @@ std::string GetEnvStringOr(const char *name, const std::string &default_value) {
     return env_val ? std::string(env_val) : default_value;
 }
 
+static std::string SanitizeKey(const std::string &key) {
+    // Set of invalid filesystem characters to be replaced
+    constexpr std::string_view kInvalidChars = "/\\:*?\"<>|";
+    std::string sanitized_key;
+    sanitized_key.reserve(key.size());
+
+    for (char c : key) {
+        // Replace invalid characters with underscore
+        sanitized_key.push_back(
+            kInvalidChars.find(c) != std::string_view::npos ? '_' : c);
+    }
+    return sanitized_key;
+}
+
+std::string ResolvePathFromKey(const std::string &key,
+                               const std::string &root_dir,
+                               const std::string &fsdir) {
+    // Compute hash of the key
+    size_t hash = std::hash<std::string>{}(key);
+
+    // Use low 8 bits to create 2-level directory structure (e.g. "a1/b2")
+    char dir1 =
+        static_cast<char>('a' + (hash & 0x0F));  // Lower 4 bits -> 16 dirs
+    char dir2 = static_cast<char>(
+        'a' + ((hash >> 4) & 0x0F));  // Next 4 bits -> 16 subdirs
+
+    // Safely construct path using std::filesystem
+    namespace fs = std::filesystem;
+    fs::path dir_path = fs::path(std::string(1, dir1)) / std::string(1, dir2);
+
+    // Combine directory path with sanitized filename
+    fs::path full_path =
+        fs::path(root_dir) / fsdir / dir_path / SanitizeKey(key);
+
+    return full_path.lexically_normal().string();
+}
 }  // namespace mooncake
