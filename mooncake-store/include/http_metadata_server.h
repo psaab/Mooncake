@@ -20,7 +20,7 @@ enum class KVPoll {
 
 class HttpMetadataServer {
    public:
-    HttpMetadataServer(uint16_t port, const std::string& host = "0.0.0.0");
+    HttpMetadataServer(uint16_t port, const std::string& host = "::");
     ~HttpMetadataServer();
 
     // Start the HTTP metadata server
